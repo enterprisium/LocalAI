@@ -41,7 +41,7 @@ class BackendServicer(backend_pb2_grpc.BackendServicer):
 
             decoded_text = self.generator.tokenizer.decode(self.generator.sequence[0][initial_len:])
             if has_leading_space:
-                decoded_text = ' ' + decoded_text
+                decoded_text = f' {decoded_text}'
 
             if token.item() == self.generator.tokenizer.eos_token_id:
                 break
@@ -79,18 +79,13 @@ class BackendServicer(backend_pb2_grpc.BackendServicer):
         return backend_pb2.Result(message="Model loaded successfully", success=True)
 
     def Predict(self, request, context):
-        penalty = 1.15
-        if request.Penalty != 0.0:
-            penalty = request.Penalty
+        penalty = request.Penalty if request.Penalty != 0.0 else 1.15
         self.generator.settings.token_repetition_penalty_max = penalty
         self.generator.settings.temperature = request.Temperature
         self.generator.settings.top_k = request.TopK
         self.generator.settings.top_p = request.TopP
 
-        tokens = 512
-        if request.Tokens != 0:
-            tokens = request.Tokens
-
+        tokens = request.Tokens if request.Tokens != 0 else 512
         if self.cache.batch_size == 1:
             del self.cache
             self.cache = ExLlamaCache(self.model, batch_size=2)
@@ -117,7 +112,7 @@ def serve(address):
     backend_pb2_grpc.add_BackendServicer_to_server(BackendServicer(), server)
     server.add_insecure_port(address)
     server.start()
-    print("Server started. Listening on: " + address, file=sys.stderr)
+    print(f"Server started. Listening on: {address}", file=sys.stderr)
 
     # Define the signal handler function
     def signal_handler(sig, frame):

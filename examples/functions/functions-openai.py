@@ -66,11 +66,10 @@ def run_conversation():
                 "content": function_response,
             }
         )  # extend conversation with function response
-        second_response = openai.ChatCompletion.create(
+        return openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=messages,
-        )  # get a new response from GPT where it can see the function response
-        return second_response
+        )
 
 
 print(run_conversation())

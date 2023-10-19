@@ -30,7 +30,8 @@ CLIPSKIP=os.environ.get("CLIPSKIP", "1") == "1"
 MAX_WORKERS = int(os.environ.get('PYTHON_GRPC_MAX_WORKERS', '1'))
 
 # https://github.com/CompVis/stable-diffusion/issues/239#issuecomment-1627615287
-def sc(self, clip_input, images) : return images, [False for i in images]
+def sc(self, clip_input, images):
+    return images, [False for _ in images]
 # edit the StableDiffusionSafetyChecker class so that, when called, it just returns the images and an array of True values
 safety_checker.StableDiffusionSafetyChecker.forward = sc
 
@@ -129,39 +130,32 @@ class BackendServicer(backend_pb2_grpc.BackendServicer):
         try:
             print(f"Loading model {request.Model}...", file=sys.stderr)
             print(f"Request {request}", file=sys.stderr)
-            torchType = torch.float32
-            if request.F16Memory:
-                torchType = torch.float16
-
+            torchType = torch.float16 if request.F16Memory else torch.float32
             local = False
             modelFile = request.Model
 
-            cfg_scale = 7
-            if request.CFGScale != 0:
-                cfg_scale = request.CFGScale
-            
+            cfg_scale = request.CFGScale if request.CFGScale != 0 else 7
             clipmodel = "runwayml/stable-diffusion-v1-5"
             if request.CLIPModel != "":
                 clipmodel = request.CLIPModel
             clipsubfolder = "text_encoder"
             if request.CLIPSubfolder != "":
                 clipsubfolder = request.CLIPSubfolder
-            
+
             # Check if ModelFile exists
             if request.ModelFile != "":
                 if os.path.exists(request.ModelFile):
                     local = True
                     modelFile = request.ModelFile
-            
+
             fromSingleFile = request.Model.startswith("http") or request.Model.startswith("/") or local
-            
+
             if request.IMG2IMG and request.PipelineType == "":
                 request.PipelineType == "StableDiffusionImg2ImgPipeline"
-                
+
             if request.PipelineType == "":
                 request.PipelineType == "StableDiffusionPipeline"
 
-            ## img2img
             if request.PipelineType == "StableDiffusionImg2ImgPipeline":
                 if fromSingleFile:
                     self.pipe = StableDiffusionImg2ImgPipeline.from_single_file(modelFile,
@@ -176,7 +170,6 @@ class BackendServicer(backend_pb2_grpc.BackendServicer):
                 self.pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(request.Model,
                             torch_dtype=torchType,
                             guidance_scale=cfg_scale)
-            ## text2img
             if request.PipelineType == "StableDiffusionPipeline":
                 if fromSingleFile:
                     self.pipe = StableDiffusionPipeline.from_single_file(modelFile,
@@ -258,10 +251,10 @@ class BackendServicer(backend_pb2_grpc.BackendServicer):
         for layer, elems in updates.items():
 
             if "text" in layer:
-                layer_infos = layer.split(LORA_PREFIX_TEXT_ENCODER + "_")[-1].split("_")
+                layer_infos = layer.split(f"{LORA_PREFIX_TEXT_ENCODER}_")[-1].split("_")
                 curr_layer = self.pipe.text_encoder
             else:
-                layer_infos = layer.split(LORA_PREFIX_UNET + "_")[-1].split("_")
+                layer_infos = layer.split(f"{LORA_PREFIX_UNET}_")[-1].split("_")
                 curr_layer = self.pipe.unet
 
             # find the target layer
@@ -275,7 +268,7 @@ class BackendServicer(backend_pb2_grpc.BackendServicer):
                         break
                 except Exception:
                     if len(temp_name) > 0:
-                        temp_name += "_" + layer_infos.pop(0)
+                        temp_name += f"_{layer_infos.pop(0)}"
                     else:
                         temp_name = layer_infos.pop(0)
 
@@ -283,11 +276,7 @@ class BackendServicer(backend_pb2_grpc.BackendServicer):
             weight_up = elems['lora_up.weight'].to(dtype)
             weight_down = elems['lora_down.weight'].to(dtype)
             alpha = elems['alpha'] if 'alpha' in elems else None
-            if alpha:
-                alpha = alpha.item() / weight_up.shape[1]
-            else:
-                alpha = 1.0
-
+            alpha = alpha.item() / weight_up.shape[1] if alpha else 1.0
             # update weight
             if len(weight_up.shape) == 4:
                 curr_layer.weight.data += multiplier * alpha * torch.mm(weight_up.squeeze(3).squeeze(2), weight_down.squeeze(3).squeeze(2)).unsqueeze(2).unsqueeze(3)
@@ -353,7 +342,7 @@ def serve(address):
     backend_pb2_grpc.add_BackendServicer_to_server(BackendServicer(), server)
     server.add_insecure_port(address)
     server.start()
-    print("Server started. Listening on: " + address, file=sys.stderr)
+    print(f"Server started. Listening on: {address}", file=sys.stderr)
 
     # Define the signal handler function
     def signal_handler(sig, frame):

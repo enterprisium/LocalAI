@@ -72,7 +72,7 @@ def serve(address):
     backend_pb2_grpc.add_BackendServicer_to_server(BackendServicer(), server)
     server.add_insecure_port(address)
     server.start()
-    print("Server started. Listening on: " + address, file=sys.stderr)
+    print(f"Server started. Listening on: {address}", file=sys.stderr)
 
     # Define the signal handler function
     def signal_handler(sig, frame):

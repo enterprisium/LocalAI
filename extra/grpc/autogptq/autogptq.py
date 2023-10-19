@@ -24,10 +24,7 @@ class BackendServicer(backend_pb2_grpc.BackendServicer):
         return backend_pb2.Reply(message=bytes("OK", 'utf-8'))
     def LoadModel(self, request, context):
         try:
-            device = "cuda:0"
-            if request.Device != "":
-                device = request.Device
-
+            device = request.Device if request.Device != "" else "cuda:0"
             tokenizer = AutoTokenizer.from_pretrained(request.Model, use_fast=request.UseFastTokenizer)
 
             model = AutoGPTQForCausalLM.from_quantized(request.Model,
@@ -37,7 +34,7 @@ class BackendServicer(backend_pb2_grpc.BackendServicer):
                     device=device,
                     use_triton=request.UseTriton,
                     quantize_config=None)
-            
+
             self.model = model
             self.tokenizer = tokenizer
         except Exception as err:
@@ -45,16 +42,9 @@ class BackendServicer(backend_pb2_grpc.BackendServicer):
         return backend_pb2.Result(message="Model loaded successfully", success=True)
 
     def Predict(self, request, context):
-        penalty = 1.0
-        if request.Penalty != 0.0:
-            penalty = request.Penalty
-        tokens = 512
-        if request.Tokens != 0:
-            tokens = request.Tokens
-        top_p = 0.95
-        if request.TopP != 0.0:
-            top_p = request.TopP
-
+        penalty = request.Penalty if request.Penalty != 0.0 else 1.0
+        tokens = request.Tokens if request.Tokens != 0 else 512
+        top_p = request.TopP if request.TopP != 0.0 else 0.95
         # Implement Predict RPC
         pipeline = TextGenerationPipeline(
             model=self.model, 
@@ -84,7 +74,7 @@ def serve(address):
     backend_pb2_grpc.add_BackendServicer_to_server(BackendServicer(), server)
     server.add_insecure_port(address)
     server.start()
-    print("Server started. Listening on: " + address, file=sys.stderr)
+    print(f"Server started. Listening on: {address}", file=sys.stderr)
 
     # Define the signal handler function
     def signal_handler(sig, frame):
